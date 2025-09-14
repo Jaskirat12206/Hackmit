@@ -87,6 +87,7 @@ app.get('/health', (req, res) => {
 app.post('/api/sensor-data', (req, res) => {
   try {
     const data = req.body;
+    console.log("Received sensor data:", data);
     
     if (!data.id) {
       return res.status(400).json({ error: 'Missing firefighter ID' });
@@ -126,35 +127,57 @@ app.post('/api/sensor-data', (req, res) => {
 });
 
 // Endpoint 2: Receive images from Mantra glasses
-app.post('/api/upload-image', upload.single('image'), (req, res) => {
+const { PNG } = require('pngjs');
+
+app.post('/api/upload-image', express.json({ limit: '20mb' }), (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No image uploaded' });
+    const { firefighterId, image } = req.body; // array of numbers
+    if (!firefighterId || !image) {
+      return res.status(400).json({ error: 'No image data or firefighterId' });
     }
 
-    const imageData = {
-      id: Date.now().toString(),
-      firefighterId: req.body.firefighterId,
-      filename: req.file.filename,
-      path: `/uploads/images/${req.file.filename}`,
-      timestamp: new Date().toISOString(),
-      type: 'image',
-      size: req.file.size
-    };
+    const width = 160;
+    const height = 120;
 
-    mediaFiles.push(imageData);
-    
-    // Send to dashboard in real-time
-    io.emit('new-media', imageData);
-    
-    console.log(`New image from ${imageData.firefighterId}: ${imageData.filename}`);
-    res.json({ success: true, image: imageData });
-    
-  } catch (error) {
-    console.error('Image upload error:', error);
-    res.status(500).json({ error: 'Upload failed' });
+    const png = new PNG({ width, height });
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = y * width + x;
+        const val = image[idx] ?? 0;
+        const pngIdx = (y * width + x) << 2; // RGBA has 4 bytes
+        png.data[pngIdx] = val;     // R
+        png.data[pngIdx + 1] = val; // G
+        png.data[pngIdx + 2] = val; // B
+        png.data[pngIdx + 3] = 255; // A
+      }
+    }
+
+    const filename = `uploads/images/${Date.now()}.png`;
+    png.pack().pipe(fs.createWriteStream(filename)).on('finish', () => {
+      const imageData = {
+        id: Date.now().toString(),
+        firefighterId,
+        filename,
+        path: `/${filename}`,
+        timestamp: new Date().toISOString(),
+        type: 'image',
+        size: image.length
+      };
+
+      mediaFiles.push(imageData);
+      io.emit('new-media', imageData);
+
+      res.json({ success: true, image: imageData });
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to process image' });
   }
 });
+
+
 
 // Endpoint 3: Receive videos from Mantra glasses
 app.post('/api/upload-video', upload.single('video'), (req, res) => {
@@ -258,7 +281,7 @@ app.use((req, res) => {
 });
 
 // Start the server
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0",() => {
   console.log(`🚀 Firefighter Backend Server running on http://localhost:${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`📁 File uploads will be stored in: ${path.resolve(uploadsDir)}`);

@@ -36,9 +36,9 @@ export default function FirefighterDashboard() {
     fetchMedia();
     
     // Set up polling for real-time updates
-    const firefighterInterval = setInterval(fetchFirefighters, 5000); // Every 5 seconds
-    const mediaInterval = setInterval(fetchMedia, 10000); // Every 10 seconds
-    
+    const firefighterInterval = setInterval(fetchFirefighters, 500); // Every 500 ms
+    const mediaInterval = setInterval(fetchMedia, 500); // Every 500 ms
+
     return () => {
       clearInterval(firefighterInterval);
       clearInterval(mediaInterval);
